@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import PromptCard from "@/components/PromptCard";
@@ -9,10 +9,14 @@ import MilestoneCertificate from "@/components/MilestoneCertificate";
 import { Prompt, MilestoneData, Quiz } from "@/lib/types";
 import { getPrompt, getQuiz } from "@/lib/geminiClient";
 import { ChevronLeft, ChevronRight, Loader } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 const Subject = () => {
   const { subjectId } = useParams<{ subjectId: string }>();
   const [currentPrompt, setCurrentPrompt] = useState<number>(1);
+  const [subject, setSubject] = useState<{ name: string, description: string, prompt_count: number } | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState<Record<number, string>>({});
@@ -20,15 +24,88 @@ const Subject = () => {
   const [showQuiz, setShowQuiz] = useState(false);
   const [showMilestone, setShowMilestone] = useState(false);
   const [milestoneData, setMilestoneData] = useState<MilestoneData | null>(null);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   
-  // Get the subject name from the ID for display
-  const subjectName = subjectId ? 
-    subjectId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') : 
-    '';
+  // Get subject information
+  useEffect(() => {
+    const fetchSubject = async () => {
+      if (!subjectId) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('subjects')
+          .select('name, description, prompt_count')
+          .eq('id', subjectId)
+          .single();
+        
+        if (error) throw error;
+        
+        if (data) {
+          setSubject(data);
+        }
+      } catch (error: any) {
+        console.error('Error fetching subject:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load subject information",
+          variant: "destructive",
+        });
+        navigate('/dashboard');
+      }
+    };
+    
+    fetchSubject();
+  }, [subjectId, toast, navigate]);
+  
+  // Get user progress
+  useEffect(() => {
+    const fetchUserProgress = async () => {
+      if (!subjectId || !user) return;
+      
+      try {
+        // Check if user has progress for this subject
+        const { data: progressData, error: progressError } = await supabase
+          .from('user_progress')
+          .select('current_prompt, notes')
+          .eq('user_id', user.id)
+          .eq('subject_id', subjectId)
+          .single();
+        
+        if (progressError && progressError.code !== 'PGRST116') { // PGRST116 = not found
+          throw progressError;
+        }
+        
+        if (progressData) {
+          // If user has existing progress, set current prompt and notes
+          setCurrentPrompt(progressData.current_prompt);
+          if (progressData.notes) {
+            setNotes(progressData.notes);
+          }
+        } else {
+          // If no progress exists, create a new record
+          const { error: insertError } = await supabase
+            .from('user_progress')
+            .insert({
+              user_id: user.id,
+              subject_id: subjectId,
+              current_prompt: 1
+            });
+          
+          if (insertError) throw insertError;
+        }
+      } catch (error: any) {
+        console.error('Error loading or creating user progress:', error);
+      }
+    };
+    
+    fetchUserProgress();
+  }, [subjectId, user]);
   
   useEffect(() => {
     const loadPrompt = async () => {
-      if (!subjectId) return;
+      if (!subjectId || !subject) return;
       
       setLoading(true);
       try {
@@ -65,21 +142,38 @@ const Subject = () => {
             level: milestone,
             title: titles[milestone],
             description: descriptions[milestone],
-            subject: subjectName,
-            username: "Student", // In a real app, get from Supabase auth
+            subject: subject.name,
+            username: user?.email?.split('@')[0] || "Student",
             date: new Date()
           });
           setShowMilestone(true);
         }
+        
+        // Update user progress in database
+        if (user) {
+          await supabase
+            .from('user_progress')
+            .update({
+              current_prompt: currentPrompt,
+              last_updated: new Date().toISOString()
+            })
+            .eq('user_id', user.id)
+            .eq('subject_id', subjectId);
+        }
       } catch (error) {
         console.error("Error loading prompt:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load learning content",
+          variant: "destructive",
+        });
       } finally {
         setLoading(false);
       }
     };
     
     loadPrompt();
-  }, [currentPrompt, subjectId, subjectName]);
+  }, [currentPrompt, subjectId, subject, user, toast]);
   
   const handlePrevious = () => {
     if (currentPrompt > 1) {
@@ -88,17 +182,72 @@ const Subject = () => {
   };
   
   const handleNext = () => {
-    if (currentPrompt < 100) {
+    if (subject && currentPrompt < subject.prompt_count) {
       setCurrentPrompt(currentPrompt + 1);
     }
   };
   
-  const handleSaveNote = (promptNumber: number, note: string) => {
-    setNotes({
+  const handleSaveNote = async (promptNumber: number, note: string) => {
+    const updatedNotes = {
       ...notes,
       [promptNumber]: note
-    });
-    // In a real app, save to Supabase here
+    };
+    
+    setNotes(updatedNotes);
+    
+    // Save to database
+    if (user && subjectId) {
+      try {
+        await supabase
+          .from('user_progress')
+          .update({
+            notes: updatedNotes
+          })
+          .eq('user_id', user.id)
+          .eq('subject_id', subjectId);
+          
+        toast({
+          title: "Note saved",
+          description: "Your note has been saved successfully",
+        });
+      } catch (error) {
+        console.error('Error saving note:', error);
+        toast({
+          title: "Error",
+          description: "Failed to save note",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+  
+  const handleQuizSubmit = async (score: number) => {
+    setShowQuiz(false);
+    
+    // Save quiz score to database
+    if (user && subjectId) {
+      try {
+        const { data: progressData } = await supabase
+          .from('user_progress')
+          .select('quiz_scores')
+          .eq('user_id', user.id)
+          .eq('subject_id', subjectId)
+          .single();
+        
+        const quizScores = progressData?.quiz_scores || {};
+        quizScores[currentPrompt / 10] = score;
+        
+        await supabase
+          .from('user_progress')
+          .update({
+            quiz_scores: quizScores
+          })
+          .eq('user_id', user.id)
+          .eq('subject_id', subjectId);
+      } catch (error) {
+        console.error('Error saving quiz score:', error);
+      }
+    }
   };
   
   return (
@@ -108,12 +257,16 @@ const Subject = () => {
       <main className="flex-1 container py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold">{subjectName}</h1>
-            <p className="text-muted-foreground">Your personalized learning journey</p>
+            <h1 className="text-3xl font-bold">{subject?.name || subjectId}</h1>
+            <p className="text-muted-foreground">{subject?.description || 'Your personalized learning journey'}</p>
           </div>
         </div>
         
-        <ProgressBar current={currentPrompt} total={100} className="mb-8" />
+        <ProgressBar 
+          current={currentPrompt} 
+          total={subject?.prompt_count || 100} 
+          className="mb-8" 
+        />
         
         {loading ? (
           <div className="h-96 flex items-center justify-center">
@@ -168,7 +321,7 @@ const Subject = () => {
                 </div>
                 
                 <div className="mt-8">
-                  <Button onClick={() => setShowQuiz(false)}>Submit Quiz & Continue</Button>
+                  <Button onClick={() => handleQuizSubmit(85)}>Submit Quiz & Continue</Button>
                 </div>
               </div>
             )}
@@ -184,12 +337,12 @@ const Subject = () => {
               </Button>
               
               <span className="text-muted-foreground">
-                Prompt {currentPrompt} of 100
+                Prompt {currentPrompt} of {subject?.prompt_count || 100}
               </span>
               
               <Button
                 onClick={handleNext}
-                disabled={currentPrompt >= 100}
+                disabled={subject ? currentPrompt >= subject.prompt_count : currentPrompt >= 100}
                 className="gap-2"
               >
                 Next <ChevronRight className="h-4 w-4" />

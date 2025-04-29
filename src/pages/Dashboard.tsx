@@ -14,34 +14,72 @@ import SubjectCard from "@/components/SubjectCard";
 import { Subject } from "@/lib/types";
 import { generateSubjectSuggestions } from "@/lib/geminiClient";
 import { Loader, Search } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/lib/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
   const [searchInput, setSearchInput] = useState("");
   const [searching, setSearching] = useState(false);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [recentSubjects, setRecentSubjects] = useState<Subject[]>([]);
+  const [userProgress, setUserProgress] = useState<Record<string, number>>({});
+  const { user } = useAuth();
+  const { toast } = useToast();
 
+  // Fetch subjects from database
   useEffect(() => {
-    // Mock data for recent subjects
-    // In a real app, this would come from Supabase
-    setRecentSubjects([
-      {
-        id: "machine-learning",
-        name: "Machine Learning",
-        description: "Systems that can learn from data",
-        promptCount: 100
-      },
-      {
-        id: "quantum-mechanics",
-        name: "Quantum Mechanics",
-        description: "Study of matter and energy at the most fundamental level",
-        promptCount: 100
+    const fetchSubjects = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('subjects')
+          .select('*');
+        
+        if (error) throw error;
+        
+        if (data) {
+          setRecentSubjects(data);
+        }
+      } catch (error: any) {
+        console.error('Error fetching subjects:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load subjects",
+          variant: "destructive",
+        });
       }
-    ]);
+    };
     
-    // Set progress on recent subjects (mock data)
-    // In a real app, this would come from Supabase
-  }, []);
+    fetchSubjects();
+  }, [toast]);
+
+  // Fetch user progress
+  useEffect(() => {
+    const fetchUserProgress = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('user_progress')
+          .select('subject_id, current_prompt')
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+        
+        if (data) {
+          const progressMap: Record<string, number> = {};
+          data.forEach(item => {
+            progressMap[item.subject_id] = item.current_prompt;
+          });
+          setUserProgress(progressMap);
+        }
+      } catch (error: any) {
+        console.error('Error fetching user progress:', error);
+      }
+    };
+    
+    fetchUserProgress();
+  }, [user]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +91,11 @@ const Dashboard = () => {
       setSubjects(suggestions);
     } catch (error) {
       console.error("Error fetching subject suggestions:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate subject suggestions",
+        variant: "destructive",
+      });
     } finally {
       setSearching(false);
     }
@@ -99,7 +142,10 @@ const Dashboard = () => {
             <h2 className="text-xl font-semibold mb-4">Suggested Topics</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {subjects.map((subject) => (
-                <SubjectCard key={subject.id} subject={subject} />
+                <SubjectCard 
+                  key={subject.id} 
+                  subject={subject}
+                />
               ))}
             </div>
           </div>
@@ -114,7 +160,7 @@ const Dashboard = () => {
                 <SubjectCard 
                   key={subject.id} 
                   subject={subject} 
-                  progress={subject.id === "machine-learning" ? 42 : 17}
+                  progress={userProgress[subject.id] || 0}
                 />
               ))}
             </div>

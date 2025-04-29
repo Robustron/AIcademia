@@ -9,13 +9,91 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      subjects: {
+        Row: {
+          description: string
+          id: string
+          name: string
+          prompt_count: number
+        }
+        Insert: {
+          description: string
+          id: string
+          name: string
+          prompt_count?: number
+        }
+        Update: {
+          description?: string
+          id?: string
+          name?: string
+          prompt_count?: number
+        }
+        Relationships: []
+      }
+      user_progress: {
+        Row: {
+          current_prompt: number
+          id: string
+          last_updated: string
+          notes: Json
+          quiz_scores: Json
+          subject_id: string
+          user_id: string
+        }
+        Insert: {
+          current_prompt?: number
+          id?: string
+          last_updated?: string
+          notes?: Json
+          quiz_scores?: Json
+          subject_id: string
+          user_id: string
+        }
+        Update: {
+          current_prompt?: number
+          id?: string
+          last_updated?: string
+          notes?: Json
+          quiz_scores?: Json
+          subject_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          username: string
+          avatar_url: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

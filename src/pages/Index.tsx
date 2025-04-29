@@ -3,8 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import { ArrowRight, BookOpen, Lightbulb, Book } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
 
 const Index = () => {
+  const { user } = useAuth();
+  
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -20,11 +23,19 @@ const Index = () => {
             with personalized AI guidance and interactive learning.
           </p>
           <div className="flex flex-wrap gap-4 justify-center animate-fade-in delay-200">
-            <Link to="/dashboard">
-              <Button size="lg" className="text-lg px-8 gap-2">
-                Start Learning <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+            {user ? (
+              <Link to="/dashboard">
+                <Button size="lg" className="text-lg px-8 gap-2">
+                  Start Learning <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            ) : (
+              <Link to="/auth">
+                <Button size="lg" className="text-lg px-8 gap-2">
+                  Sign Up Free <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
             <Button size="lg" variant="outline" className="text-lg">
               Learn More
             </Button>
@@ -80,11 +91,19 @@ const Index = () => {
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
               Choose from thousands of subjects and begin your learning journey today.
             </p>
-            <Link to="/dashboard">
-              <Button size="lg" className="text-lg px-8">
-                Get Started
-              </Button>
-            </Link>
+            {user ? (
+              <Link to="/dashboard">
+                <Button size="lg" className="text-lg px-8">
+                  Go to Dashboard
+                </Button>
+              </Link>
+            ) : (
+              <Link to="/auth">
+                <Button size="lg" className="text-lg px-8">
+                  Get Started
+                </Button>
+              </Link>
+            )}
           </div>
         </section>
       </main>
