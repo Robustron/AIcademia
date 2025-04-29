@@ -81,7 +81,19 @@ const Subject = () => {
           // If user has existing progress, set current prompt and notes
           setCurrentPrompt(progressData.current_prompt);
           if (progressData.notes) {
-            setNotes(progressData.notes);
+            // Convert JSON object from Supabase to Record<number, string>
+            const notesData: Record<number, string> = {};
+            const notesObj = progressData.notes as Record<string, string>;
+            
+            // Convert string keys to numbers for our expected format
+            Object.keys(notesObj).forEach(key => {
+              const numericKey = parseInt(key, 10);
+              if (!isNaN(numericKey)) {
+                notesData[numericKey] = notesObj[key];
+              }
+            });
+            
+            setNotes(notesData);
           }
         } else {
           // If no progress exists, create a new record

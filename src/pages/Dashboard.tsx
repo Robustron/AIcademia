@@ -38,7 +38,14 @@ const Dashboard = () => {
         if (error) throw error;
         
         if (data) {
-          setRecentSubjects(data);
+          // Convert database fields to our application's expected format
+          const formattedSubjects: Subject[] = data.map(item => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            promptCount: item.prompt_count
+          }));
+          setRecentSubjects(formattedSubjects);
         }
       } catch (error: any) {
         console.error('Error fetching subjects:', error);
